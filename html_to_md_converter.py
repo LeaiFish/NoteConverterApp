@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 import os
 import re
 
-# 主转换函数
 def convert_html_to_md(html_path):
     with open(html_path, 'r', encoding='utf-8') as file:
         soup = BeautifulSoup(file, 'html.parser')
@@ -13,19 +12,22 @@ def convert_html_to_md(html_path):
     current_chapter = None
 
     for elem in soup.body.children:
-        if elem.name == 'div' and elem.span and elem.span.get('style', '').find('color: #48b4c1') != -1:
-            # 章节标题
+        if elem.name == 'div' and elem.span and 'color: #48b4c1' in elem.span.get('style', ''):
             current_chapter = elem.get_text(strip=True)
             output.append(f"\n## {current_chapter}\n")
         elif elem.name == 'div' and 'border-top' in elem.get('style', ''):
-            # 摘录 + 时间戳
-            timestamp = elem.find('div').get_text(strip=True)
-            quote = elem.find_all('div')[1].get_text(strip=True)
-            output.append(f"> {quote}\n\n{timestamp}\n")
+            divs = elem.find_all('div')
+            if len(divs) >= 2:
+                timestamp = divs[0].get_text(strip=True)
+                quote = divs[1].get_text(strip=True)
+                # 清理连续空格，保证格式整洁
+                quote = re.sub(r'\s+', ' ', quote)
+                timestamp = re.sub(r'\s+', ' ', timestamp)
+                output.append(f"> {quote}\n\n{timestamp}\n")
         elif elem.name == 'div' and elem.find('span') and elem.find('span').get_text(strip=True).startswith('注 |'):
-            # 注释内容
             note_full = elem.get_text(strip=True)
-            note_full = re.sub(r"注 \|#", "注 | #", note_full)
+            # 修正注释部分：统一给"注 |"后面补空格
+            note_full = re.sub(r"注 \|(?=\S)", "注 | ", note_full)
             note_match = re.match(r"注 \| (#[^\s]+) (.+)", note_full)
             if note_match:
                 tag = note_match.group(1)
@@ -34,21 +36,21 @@ def convert_html_to_md(html_path):
             else:
                 output.append(f"{note_full}\n\n---\n")
 
-    final_output = "# Tiny Experiments: How to Live (Anne-Laure Le Cunff)\n" + "\n".join(output)
+    title_tag = soup.find('title')
+    if title_tag and title_tag.get_text(strip=True):
+        title_text = title_tag.get_text(strip=True)
+    else:
+        title_text = "Untitled"
 
-    # 生成Markdown文件
+    final_output = f"# {title_text}\n" + "\n".join(output)
+
     output_path = os.path.splitext(html_path)[0] + '.md'
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(final_output)
 
     return output_path
 
-# GUI主程序
-def main():
-    root = tk.Tk()
-    root.withdraw()  # 隐藏主窗口
-
-    messagebox.showinfo("选择文件", "请选择要转换的HTML笔记文件。")
+def select_file():
     file_path = filedialog.askopenfilename(filetypes=[("HTML files", "*.html")])
 
     if not file_path:
@@ -61,5 +63,11 @@ def main():
     except Exception as e:
         messagebox.showerror("错误", f"转换过程中发生错误：{str(e)}")
 
-if __name__ == "__main__":
-    main()
+# 创建图形界面
+root = tk.Tk()
+root.title("HTML to Markdown Converter for Boox Notes")
+
+select_button = tk.Button(root, text="Select HTML File", command=select_file)
+select_button.pack(padx=20, pady=20)
+
+root.mainloop()
